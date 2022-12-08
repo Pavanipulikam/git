@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="7c029bfc-f549-4c02-a19c-931397cd1814" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<flow name="helloFlow" doc:id="cb64b611-9adb-4266-8cd2-2bc31214dfac" >
+		<http:listener doc:name="Listener" doc:id="6dd2223b-1b35-46a6-86b9-4aa5a4d7c641" config-ref="HTTP_Listener_config" path="/hello"/>
+		<ee:transform doc:name="Transform Message" doc:id="625a9cca-6dd1-4d97-bfa0-23430e3d35db" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+---
+data: {
+	hub: "MUA",
+	flight @(airline: payload.airline): {
+	    code: payload.toAirportCode,
+	}
+}
+
+	]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="260628a1-5fba-42a6-a335-1f1462b76ca0" message="#[vars.DWoutput]"/>
+	</flow>
+	<flow name="postMultipleFlights" doc:id="ef666891-be68-4893-aca7-1a0ca853aa9e" >
+		<http:listener doc:name="POST /multipleflights" doc:id="102b533d-d279-439f-a2a9-7575ae95a0cc" config-ref="HTTP_Listener_config" path="/multipleflights"/>
+		<ee:transform doc:name="Transform Message" doc:id="52c172d5-f2a7-418e-ab58-2c3166b341f5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/dw
+import dasherize from dw::core::Strings
+type Currency = String {format: "###.00"}
+type Flight = Object {class: "com.mulesoft.training.Flight"}
+
+//var numSeats = 400
+//var numSeats = (x=400) -> x
+/*var numSeats = (planeType: String) ->
+    if (planeType contains('737'))
+        150
+    else
+        300
+*/
+fun getNumSeats(planeType:String) = do {
+	var maxSeats =
+	    if (planeType contains('737'))
+            150
+        else
+            300
+     ---
+     maxSeats
+}
+---
+flights: (payload..*return map (object, index) -> { 
+	destination: object.destination,
+	price: object.price as Number as Currency,
+//	totalSeats: getNumSeats(object.planeType as String),
+    totalSeats: lookup("getTotalSeats",{planeType: object.planeType}),
+	planeType: dasherize(replace(object.planeType,/(Boing)/) with "Boeing"),
+	departureDate: object.departureDate as Date {format: "yyyy/MM/dd"}
+	    as String {format:"MMM dd, yyyy"},
+	availableSeats: object.emptySeats as Number
+} as Object) distinctBy $filter ($.availableSeats !=0) 
+             orderBy $.departureDate orderBy $.price]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="7d8d3ae9-4d10-4af1-b9b5-241a4739969d" />
+	</flow>
+	<flow doc:id="045271a5-512c-42eb-9d41-a93c98ada7c7" name="getTotalSeats" initialState="started">
+		<ee:transform doc:name="Transform Message" doc:id="afca4a1c-37c0-4259-819c-fbb6651d83d0" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+
+fun getNumSeats(planeType:String) = do {
+	var maxSeats =
+	    if (planeType contains('737'))
+            150
+        else
+            300
+     ---
+     maxSeats
+}
+
+---
+getNumSeats(playload.planeType)
+
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
